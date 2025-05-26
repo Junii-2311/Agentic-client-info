@@ -62,67 +62,18 @@ def fetch_qualified_clients(conn):
 
 
 
-# def fetch_client_messages(conn, client_id):
-#     """Fetch messages for a specific client from client_fub_messages."""
-#     query = """
-#     SELECT message 
-#     FROM client_fub_messages 
-#     WHERE client_id = %s;
-#     """
-#     cur = conn.cursor()
-#     cur.execute(query, (client_id,))
-#     messages = cur.fetchall()
-#     cur.close()
-#     return [msg[0] for msg in messages]
-
-
-
-
 def fetch_client_messages(conn, client_id):
-    """
-    Fetch messages for a specific client:
-    - Try from 'public.textmessage' table (status in 'Sent', 'Received').
-    - If not found, fall back to 'client_fub_messages' table.
-    Returns a list of message strings (in order).
+    """Fetch messages for a specific client from client_fub_messages."""
+    query = """
+    SELECT message 
+    FROM client_fub_messages 
+    WHERE client_id = %s;
     """
     cur = conn.cursor()
-    try:
-        # 1. Try public.textmessage first
-        query1 = """
-        SELECT message
-        FROM public.textmessage
-        WHERE client_id = %s
-          AND status IN ('Sent', 'Received')
-        ORDER BY created ASC
-        """
-        cur.execute(query1, (client_id,))
-        rows = cur.fetchall()
-        if rows and len(rows) > 0 and rows[0][0] is not None:
-            messages = [row[0] for row in rows if row[0] is not None]
-            print(f"Fetched {len(messages)} messages from 'public.textmessage' for client {client_id}.")
-            return messages
-
-        # 2. If nothing found, try client_fub_messages
-        print(f"No messages found in 'public.textmessage' for client {client_id}, checking 'client_fub_messages'...")
-        query2 = """
-        SELECT message
-        FROM client_fub_messages
-        WHERE client_id = %s
-        """
-        cur.execute(query2, (client_id,))
-        rows2 = cur.fetchall()
-        messages2 = [row[0] for row in rows2 if row[0] is not None]
-        if messages2:
-            print(f"Fetched {len(messages2)} messages from 'client_fub_messages' for client {client_id}.")
-        else:
-            print(f"No messages found for client {client_id} in either table.")
-        return messages2
-
-    except Exception as e:
-        print(f"Error fetching client messages for client {client_id}: {e}")
-        return []
-    finally:
-        cur.close()
+    cur.execute(query, (client_id,))
+    messages = cur.fetchall()
+    cur.close()
+    return [msg[0] for msg in messages]
 
 
 
@@ -252,65 +203,27 @@ Please analyze the messages and return structured JSON only.
     
 
 # === FUNCTION TO SAVE RESULTS TO CSV ===
-# def save_results_to_csv(client_id, analysis_result):
-#     """Save the analysis results into a CSV file for each client."""
-#     # Ensure the result is a list of dictionaries (JSON-like structure)
-#     if isinstance(analysis_result, str):
-#         # Check for error or empty result before parsing
-#         if not analysis_result.strip() or analysis_result.strip().lower().startswith("error"):
-#             print(f"Skipping client {client_id}: No valid analysis result. Message: {analysis_result}")
-#             return
-#         import json
-#         try:
-#             analysis_result = json.loads(analysis_result)
-#         except Exception as e:
-#             print(f"Skipping client {client_id}: Failed to parse analysis result as JSON. Error: {e}\nRaw result: {analysis_result}")
-#             return
-#     # Convert the analysis result to a DataFrame
-#     result_data = pd.DataFrame(analysis_result)
-#     # Define filename
-#     filename = f"client_{client_id}_analysis.csv"
-#     result_data.to_csv(filename, index=False)
-#     print(f"Results saved to {filename}")
-    
-
-
-
 def save_results_to_csv(client_id, analysis_result):
-    """Save the analysis results into a CSV file for each client, cleaning non-JSON output."""
-    import json
-    import re
-
+    """Save the analysis results into a CSV file for each client."""
+    # Ensure the result is a list of dictionaries (JSON-like structure)
     if isinstance(analysis_result, str):
-        cleaned = analysis_result.strip()
-
-        # Remove triple backticks and ```json from beginning/end
-        if cleaned.startswith("```json"):
-            cleaned = cleaned[len("```json"):].strip()
-        if cleaned.startswith("```"):
-            cleaned = cleaned[len("```"):].strip()
-        if cleaned.endswith("```"):
-            cleaned = cleaned[:-3].strip()
-
-        # Try to find the first [ or { and cut out anything before it (for robustness)
-        match = re.search(r"(\[.*\]|\{.*\})", cleaned, re.DOTALL)
-        if match:
-            cleaned = match.group(0)
-        # If it's empty or an error, skip
-        if not cleaned or cleaned.lower().startswith("error"):
+        # Check for error or empty result before parsing
+        if not analysis_result.strip() or analysis_result.strip().lower().startswith("error"):
             print(f"Skipping client {client_id}: No valid analysis result. Message: {analysis_result}")
             return
+        import json
         try:
-            analysis_result = json.loads(cleaned)
+            analysis_result = json.loads(analysis_result)
         except Exception as e:
             print(f"Skipping client {client_id}: Failed to parse analysis result as JSON. Error: {e}\nRaw result: {analysis_result}")
             return
-
     # Convert the analysis result to a DataFrame
     result_data = pd.DataFrame(analysis_result)
+    # Define filename
     filename = f"client_{client_id}_analysis.csv"
     result_data.to_csv(filename, index=False)
     print(f"Results saved to {filename}")
+    
 
 
 
@@ -342,8 +255,8 @@ def process_clients():
     # Step 2: Fetch clients whose current_stage is 4 or greater
     clients = fetch_qualified_clients(conn)
 
-    # Step 3: Process only the first 10 clients
-    for client in clients[:10]:
+    # Step 3: Process each client
+    for client in clients:
         client_id = client[0]  # Extracting client_id from the tuple
         print(f"Processing client {client_id}...")
 

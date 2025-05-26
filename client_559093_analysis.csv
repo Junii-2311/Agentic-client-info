@@ -1,0 +1,7 @@
+intent,attribute,value,reason,unit
+gather_requirement,location_preference,around Davis high school,son is in the 12th grade and preferably wants to graduate from there,
+gather_requirement,budget,1500,,USD
+gather_requirement,bedrooms,3,,bedrooms
+gather_requirement,move_in_date,next month,,
+schedule_meeting,time,3pm,,
+confirm_meeting,time,3:00pm CDT,,

@@ -13,7 +13,7 @@ genai.configure(api_key="AIzaSyCARQ2mkQV3dd-TzWo79Q5wkloah1Aqiac")
 
 def gemini_chat(prompt):
     # Use the latest supported Gemini model name
-    model = genai.GenerativeModel('models/gemini-1.0-pro-latest')
+    model = genai.GenerativeModel('gemini-2.0-flash')
     try:
         response = model.generate_content(prompt)
         return response.text
@@ -46,7 +46,7 @@ class GeminiChat:
 
 agent = Agent(
     model=GeminiChat(),
-    tools=[ExaTools(start_published_date=today, type="keyword")],
+    tools=[ExaTools(api_key="3a27a6bf-82e8-48f9-b0e8-fcb6bde6a8f6", start_published_date=today, type="keyword")],
     description=dedent("""\
         You are Professor X-1000, a distinguished AI research scientist with expertise
         in analyzing and synthesizing complex information. Your specialty lies in creating

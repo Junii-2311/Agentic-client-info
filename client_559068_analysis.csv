@@ -1,0 +1,10 @@
+action,location,budget_min,budget_max,details,alternative_proof,attribute,value,budget,time
+request_options,Jefferson Park,1000.0,1500.0,,,,,,
+address_credit_score_issue,,,,low credit score,gross income,,,,
+request_confirmation,,,,,,move-in date,beginning of September,,
+request_confirmation,,,,,,bedroom preference,1 bed 1 bath,,
+propose_call,Jefferson Park,,,,,,,in your budget,
+arrange_call,,,,,,,,,5:30
+confirm_call,,,,,,,,,5:30 PM
+call_reminder,,,,,,,,,5:30pm CDT
+call_missed,,,,,,,,,

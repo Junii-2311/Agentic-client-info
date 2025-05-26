@@ -1,0 +1,7 @@
+turn,action,property_details,query
+7,offer,"{'price': 2887, 'bedrooms': 2, 'bathrooms': 2, 'square_feet': 940, 'availability': 'Sep 9'}",
+9,offer,"{'price': 2033, 'bedrooms': 2, 'bathrooms': 1, 'square_feet': 744, 'availability': 'Sep 5'}",
+13,offer,"{'square_feet': 842, 'price': 3470}",
+17,question,,so did you like the building images
+22,offer,"{'price': 2095, 'square_feet': 1132, 'availability': 'Now', 'bedrooms': 2, 'bathrooms': 2, 'location': 'Lincoln park'}",
+27,inquiry,,can i schedule tour for you?
