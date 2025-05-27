@@ -1,10 +1,11 @@
-action,location,budget_min,budget_max,details,alternative_proof,attribute,value,budget,time
-request_options,Jefferson Park,1000.0,1500.0,,,,,,
-address_credit_score_issue,,,,low credit score,gross income,,,,
-request_confirmation,,,,,,move-in date,beginning of September,,
-request_confirmation,,,,,,bedroom preference,1 bed 1 bath,,
-propose_call,Jefferson Park,,,,,,,in your budget,
-arrange_call,,,,,,,,,5:30
-confirm_call,,,,,,,,,5:30 PM
-call_reminder,,,,,,,,,5:30pm CDT
-call_missed,,,,,,,,,
+action,location,budget_minimum,budget_maximum,building_feedback,context,move_in_date,school_preference,bedroom_count,bathroom_count,budget,time,date
+request_building_options,Jefferson Park,1000.0,1500.0,,,,,,,,,
+acknowledge_building_preference,,,,perfect,,,,,,,,
+request_move_in_date,,,,,to find a place that can accommodate,,,,,,,
+provide_move_in_date,,,,,,beginning of September,beaubien elementary,1.0,1.0,,,
+propose_call_to_discuss_properties,Jefferson Park,,,,,,,,,within budget,,
+request_convenient_call_time,,,,,to finalize details,,,,,,,
+provide_convenient_call_time,,,,,,,,,,,5:30,
+confirm_call_time,,,,,,,,,,,5:30 PM,
+provide_appointment_reminder,,,,,,,,,,,5:30pm CDT,today
+report_missed_call,,,,,,,,,,,,yesterday

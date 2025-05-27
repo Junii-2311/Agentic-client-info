@@ -1,4 +1,5 @@
-interaction_type,date,time,time_zone,subject,purpose,outcome,details,location,apartment_type,budget_issue,question
-appointment_scheduling,Tuesday,10:00 AM,CDT,Discuss apartment options,To discuss available 2-bedroom apartment options in Pilsen,,,,,,
-attempted_call,,,,,,voicemail,Agent attempted to call Sarah,,,,
-budget_discussion,,,,,,,,Pilsen,2-bedroom,Budget is tight,Are you open location wise?
+interaction_type,date,time,timezone,topic,status,outcome,location,issue,question
+schedule_call,Tuesday,10:00 AM,CDT,discuss apartment options,confirmed,,,,
+attempted_call,,,,,,voicemail,,,
+budget_question,,,,,,,Pilsen,budget tight,are you open location wise?
+                                                                                                                                                                                     

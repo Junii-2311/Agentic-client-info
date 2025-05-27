@@ -1,7 +1,4 @@
-intent,attribute,value,reason,unit
-gather_requirement,location_preference,around Davis high school,son is in the 12th grade and preferably wants to graduate from there,
-gather_requirement,budget,1500,,USD
-gather_requirement,bedrooms,3,,bedrooms
-gather_requirement,move_in_date,next month,,
-schedule_meeting,time,3pm,,
-confirm_meeting,time,3:00pm CDT,,
+agent,customer,interaction_type,details
+May,Trena,preference_request,"{'budget': 'Under 1500', 'location_preference': 'Around Davis High School', 'reason': 'Son in 12th grade at Davis High School', 'bedrooms': '3', 'move_in_timeframe': 'Next month'}"
+May,Trena,schedule_call,"{'time': '3pm', 'timezone': 'CST'}"
+May,Trena,schedule_confirmation,"{'time': '3:00pm', 'timezone': 'CDT'}"

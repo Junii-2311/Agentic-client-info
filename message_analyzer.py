@@ -6,6 +6,19 @@ from textwrap import dedent
 import google.generativeai as genai
 from agno.agent import Agent
 from agno.tools.exa import ExaTools
+import dateutil.parser as dp
+
+
+
+
+def normalize_ts(ts_str):
+    if ts_str.lower() in ("none", ""):
+        return "none"
+    dt = dp.parse(ts_str)
+    if dt.time() == datetime.min.time():
+        return "none"
+    return dt.isoformat()
+
 
 # === CONFIGURATION ===
 genai.configure(api_key="AIzaSyCARQ2mkQV3dd-TzWo79Q5wkloah1Aqiac")
@@ -343,7 +356,7 @@ def process_clients():
     clients = fetch_qualified_clients(conn)
 
     # Step 3: Process only the first 10 clients
-    for client in clients[:10]:
+    for client in clients[:1]:
         client_id = client[0]  # Extracting client_id from the tuple
         print(f"Processing client {client_id}...")
 
@@ -353,11 +366,46 @@ def process_clients():
         # Combine messages into a single string (you can adjust this as needed)
         all_messages = "\n".join(client_messages)
 
+            # *** LOG THE INPUT YOU'RE SENDING TO GEMINI ***
+        print(f"\n\n=== CLIENT {client_id} MESSAGES ===\n{all_messages}\n")
         # Define requirements for analysis
-        requirements = "Extract structured building interaction data only. Ignore property searches, apartment types, or summaries."
+        # requirements = "Extract structured building interaction data only. Ignore property searches, apartment types, or summaries."
 
+        requirements = """
+Extract ONLY building-level interactions, one JSON object per building per action.
+– Each object must have:
+    • building_name (exact text from the chat)
+    • action (tour_scheduled | tour_cancelled | replaced | etc.)
+    • timestamp (ISO or “none” if not mentioned)
+    • notes (if any free-text reason)
+Example output for these sample messages:
+
+    “Client: Let’s schedule a tour of The Parker at 10AM tomorrow.”
+    “Agent: Confirmed. See you at The Parker.”
+
+should return:
+
+[
+  {
+    "building_name": "The Parker",
+    "action": "tour_scheduled",
+    "timestamp": "2025-06-05T10:00:00-05:00",
+    "notes": null
+  }
+]
+
+Now, ANALYZE the following CHAT MESSAGES and return exactly a JSON array matching that schema—nothing else.
+"""
+
+        
+
+        
         # Step 4: Analyze client messages using AI agent
         analysis_result = analyze_client_messages(all_messages, requirements)
+        
+        # in process_clients(), right after analysis_result = ...
+        print(f"\nRAW GEMINI RESPONSE for client {client_id}:\n{analysis_result}\n")
+
 
         # Step 5: Save the analysis result in a CSV file
         save_results_to_csv(client_id, analysis_result)
