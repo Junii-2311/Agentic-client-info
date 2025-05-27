@@ -207,18 +207,13 @@ def save_results_to_csv(client_id, analysis_result):
     """Save the analysis results into a CSV file for each client."""
     # Ensure the result is a list of dictionaries (JSON-like structure)
     if isinstance(analysis_result, str):
-        # Check for error or empty result before parsing
-        if not analysis_result.strip() or analysis_result.strip().lower().startswith("error"):
-            print(f"Skipping client {client_id}: No valid analysis result. Message: {analysis_result}")
-            return
+        # Parse the result if it's a string
         import json
-        try:
-            analysis_result = json.loads(analysis_result)
-        except Exception as e:
-            print(f"Skipping client {client_id}: Failed to parse analysis result as JSON. Error: {e}\nRaw result: {analysis_result}")
-            return
+        analysis_result = json.loads(analysis_result)
+    
     # Convert the analysis result to a DataFrame
     result_data = pd.DataFrame(analysis_result)
+    
     # Define filename
     filename = f"client_{client_id}_analysis.csv"
     result_data.to_csv(filename, index=False)

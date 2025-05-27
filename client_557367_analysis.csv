@@ -1,0 +1,4 @@
+building_name,sent_date,sent_method,tour_status,tour_date,tour_time,tour_type,rejection_reason,replacement_requested,notes,timestamp
+Links on Gaston,none,none,canceled,none,4:30 PM,In-Person Tour,"tired, didn't feel up to going",False,Client didn't make it to the showing,none
+Bluffs at Lakewood,none,none,canceled,none,4:00 PM,In-Person Tour,"tired, didn't feel up to going",False,Client didn't make it to the showing,none
+East Dallas Collection,none,none,canceled,none,3:00 PM,In-Person Tour,"tired, didn't feel up to going",False,Client didn't make it to the showing,none

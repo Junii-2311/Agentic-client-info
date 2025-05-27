@@ -1,0 +1,14 @@
+building_name,sent_date,sent_method,tour_status,tour_date,tour_time,tour_type,rejection_reason,replacement_requested,notes,timestamp
+1567 utilities included,none,none,none,none,none,none,none,False,Listed in chat,2024-05-29T21:07:52+00:00
+uptown regency,none,none,none,none,none,none,none,False,Listed in chat,2024-05-29T21:07:52+00:00
+4242 Sheridan,none,none,pending,none,none,FaceTime Tour,none,True,"Client loved the property, potential FaceTime tour, application submitted",2024-05-29T21:07:52+00:00
+910 Dakin,none,none,none,none,none,none,none,False,Listed in chat,2024-05-29T21:07:52+00:00
+6119 kenmore,none,none,pending,none,none,FaceTime Tour,none,False,Potential FaceTime tour requested,2024-05-29T21:07:52+00:00
+5050 N Sheridan,none,none,none,none,none,none,none,False,Client loved this one,2024-05-29T21:07:52+00:00
+Buena Terrace,none,Call,rejected,none,11:00 AM,Virtual Tour,credit,True,"Application submitted, toured (virtual), eventually rejected due to credit score. Tour initially set for Thursday (unspecified date) at 11 AM",2024-05-29T21:07:52+00:00
+Uptown Regency,none,Agent,pending,none,none,none,none,False,Considered as alternative if first option fails,2024-05-29T21:07:52+00:00
+Daikin Court,none,Agent,pending,none,none,none,none,False,Considered as alternative if first option fails,2024-05-29T21:07:52+00:00
+Prairie Shores,none,Agent,none,none,none,none,none,False,"Potential alternative, client liked community amenities",2024-05-29T21:07:52+00:00
+511 W Belmont,none,Agent,none,none,none,none,Client doesn't want studio,False,"Studio apartment in Lakeview, client rejected as they don't want a studio",2024-05-29T21:07:52+00:00
+Upshore,2024-05-29T21:07:52+00:00,Text,approved,none,3:15 PM,In-Person Tour,none,False,"Tour scheduled for today, discount applied, client secured the unit despite previous hurdles with other properties.",2024-05-29T21:07:52+00:00
+The Onyx,2024-05-29T21:07:52+00:00,Text,pending,none,none,none,none,False,"Considered as a backup, temporarily thought to be unavailable, issue clarified",2024-05-29T21:07:52+00:00

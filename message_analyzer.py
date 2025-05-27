@@ -1,3 +1,11 @@
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
+GENAI_API_KEY = os.getenv("GENAI_API_KEY")
+EXA_API_KEY = os.getenv("EXA_API_KEY")
+
 import psycopg2
 from urllib.parse import urlparse
 import pandas as pd
@@ -8,11 +16,14 @@ from agno.agent import Agent
 from agno.tools.exa import ExaTools
 import dateutil.parser as dp
 
+genai.configure(api_key=GENAI_API_KEY)
 
 
 
-def normalize_ts(ts_str):
-    if ts_str.lower() in ("none", ""):
+
+def normalize_timestamp(ts_str):
+    """Normalize timestamp string to ISO format or 'none'."""
+    if not ts_str or ts_str.lower() == "none":
         return "none"
     dt = dp.parse(ts_str)
     if dt.time() == datetime.min.time():
@@ -20,75 +31,35 @@ def normalize_ts(ts_str):
     return dt.isoformat()
 
 
-# === CONFIGURATION ===
-genai.configure(api_key="AIzaSyCARQ2mkQV3dd-TzWo79Q5wkloah1Aqiac")
-EXA_API_KEY = "3a27a6bf-82e8-48f9-b0e8-fcb6bde6a8f6"
 today = datetime.now().strftime("%Y-%m-%d")
 
 
-
-# === DATABASE CONNECTION ===
 def connect_to_db():
     """Connect to the PostgreSQL database using the provided connection string."""
-    
-    # Your provided connection string
-    db_url = "postgres://readonly:p2e0dfd8702aac2f2b98b80f2e14430fb7d3cec6f8aec1770701283042b112712@ec2-23-20-93-193.compute-1.amazonaws.com:5432/d5pt3225ki095v"
-    
-    # Parse the database URL into its components
+    db_url = (
+        "postgres://readonly:p2e0dfd8702aac2f2b98b80f2e14430fb7d3cec6f8aec1770701283042b112712@ec2-23-20-93-193.compute-1.amazonaws.com:5432/d5pt3225ki095v"
+    )
     result = urlparse(db_url)
-    
-    # Extract the connection details from the URL
-    dbname = result.path[1:]  # Remove the leading '/'
-    user = result.username
-    password = result.password
-    host = result.hostname
-    port = result.port
-    
-    
-    
-    # Establish the connection
     conn = psycopg2.connect(
-        dbname=dbname,
-        user=user,
-        password=password,
-        host=host,
-        port=port
+        dbname=result.path[1:],
+        user=result.username,
+        password=result.password,
+        host=result.hostname,
+        port=result.port,
     )
     return conn
-
-
 
 
 def fetch_qualified_clients(conn):
     """Fetch clients whose current_stage is 4 or greater."""
     query = """
-    SELECT client_id 
-    FROM client_stage_progression 
-    WHERE current_stage >= 4;
+        SELECT client_id 
+        FROM client_stage_progression 
+        WHERE current_stage >= 4
     """
-    cur = conn.cursor()
-    cur.execute(query)
-    clients = cur.fetchall()
-    cur.close()
-    return clients
-
-
-
-
-# def fetch_client_messages(conn, client_id):
-#     """Fetch messages for a specific client from client_fub_messages."""
-#     query = """
-#     SELECT message 
-#     FROM client_fub_messages 
-#     WHERE client_id = %s;
-#     """
-#     cur = conn.cursor()
-#     cur.execute(query, (client_id,))
-#     messages = cur.fetchall()
-#     cur.close()
-#     return [msg[0] for msg in messages]
-
-
+    with conn.cursor() as cur:
+        cur.execute(query)
+        return cur.fetchall()
 
 
 def fetch_client_messages(conn, client_id):
@@ -98,53 +69,39 @@ def fetch_client_messages(conn, client_id):
     - If not found, fall back to 'client_fub_messages' table.
     Returns a list of message strings (in order).
     """
-    cur = conn.cursor()
-    try:
-        # 1. Try public.textmessage first
-        query1 = """
-        SELECT message
-        FROM public.textmessage
-        WHERE client_id = %s
-          AND status IN ('Sent', 'Received')
-        ORDER BY created ASC
-        """
-        cur.execute(query1, (client_id,))
-        rows = cur.fetchall()
-        if rows and len(rows) > 0 and rows[0][0] is not None:
+    with conn.cursor() as cur:
+        try:
+            query1 = """
+                SELECT message
+                FROM public.textmessage
+                WHERE client_id = %s
+                  AND status IN ('Sent', 'Received')
+                ORDER BY created ASC
+            """
+            cur.execute(query1, (client_id,))
+            rows = cur.fetchall()
             messages = [row[0] for row in rows if row[0] is not None]
-            print(f"Fetched {len(messages)} messages from 'public.textmessage' for client {client_id}.")
-            return messages
-
-        # 2. If nothing found, try client_fub_messages
-        print(f"No messages found in 'public.textmessage' for client {client_id}, checking 'client_fub_messages'...")
-        query2 = """
-        SELECT message
-        FROM client_fub_messages
-        WHERE client_id = %s
-        """
-        cur.execute(query2, (client_id,))
-        rows2 = cur.fetchall()
-        messages2 = [row[0] for row in rows2 if row[0] is not None]
-        if messages2:
-            print(f"Fetched {len(messages2)} messages from 'client_fub_messages' for client {client_id}.")
-        else:
-            print(f"No messages found for client {client_id} in either table.")
-        return messages2
-
-    except Exception as e:
-        print(f"Error fetching client messages for client {client_id}: {e}")
-        return []
-    finally:
-        cur.close()
+            if messages:
+                print(f"Fetched {len(messages)} messages from 'public.textmessage' for client {client_id}.")
+                return messages
+            print(f"No messages found in 'public.textmessage' for client {client_id}, checking 'client_fub_messages'...")
+            query2 = """
+                SELECT message
+                FROM client_fub_messages
+                WHERE client_id = %s
+            """
+            cur.execute(query2, (client_id,))
+            messages2 = [row[0] for row in cur.fetchall() if row[0] is not None]
+            if messages2:
+                print(f"Fetched {len(messages2)} messages from 'client_fub_messages' for client {client_id}.")
+            else:
+                print(f"No messages found for client {client_id} in either table.")
+            return messages2
+        except Exception as e:
+            print(f"Error fetching client messages for client {client_id}: {e}")
+            return []
 
 
-
-
-
-
-
-
-# === GEMINI MODEL WRAPPER ===
 class GeminiChat:
     assistant_message_role = "assistant"
 
@@ -157,15 +114,12 @@ class GeminiChat:
             prompt = last.content if hasattr(last, 'content') else last.get('content', str(last))
         else:
             prompt = messages
-
         model = genai.GenerativeModel('gemini-2.0-flash')
         response = model.generate_content(prompt)
-
         class GeminiResponse:
             def __init__(self, content):
                 self.event = "assistant_response"
                 self.content = content
-
         yield GeminiResponse(response.text)
 
     def get_instructions_for_model(self, tools=None):
@@ -175,7 +129,6 @@ class GeminiChat:
         return ""
 
 
-# === AGENT DEFINITION ===
 message_analyzer = Agent(
     model=GeminiChat(),
     tools=[ExaTools(api_key=EXA_API_KEY, start_published_date=today, type="keyword")],
@@ -241,9 +194,8 @@ message_analyzer = Agent(
 )
 
 
-
-# === FUNCTION TO ANALYZE MESSAGES ===
 def analyze_client_messages(client_messages, requirements):
+    """Analyze client messages using Gemini AI and return structured JSON."""
     prompt = f"""
 REQUIREMENTS:
 {requirements}
@@ -260,161 +212,148 @@ Please analyze the messages and return structured JSON only.
         return response.text
     except Exception as e:
         return f"Error: {str(e)}"
-    
-    
-    
-
-# === FUNCTION TO SAVE RESULTS TO CSV ===
-# def save_results_to_csv(client_id, analysis_result):
-#     """Save the analysis results into a CSV file for each client."""
-#     # Ensure the result is a list of dictionaries (JSON-like structure)
-#     if isinstance(analysis_result, str):
-#         # Check for error or empty result before parsing
-#         if not analysis_result.strip() or analysis_result.strip().lower().startswith("error"):
-#             print(f"Skipping client {client_id}: No valid analysis result. Message: {analysis_result}")
-#             return
-#         import json
-#         try:
-#             analysis_result = json.loads(analysis_result)
-#         except Exception as e:
-#             print(f"Skipping client {client_id}: Failed to parse analysis result as JSON. Error: {e}\nRaw result: {analysis_result}")
-#             return
-#     # Convert the analysis result to a DataFrame
-#     result_data = pd.DataFrame(analysis_result)
-#     # Define filename
-#     filename = f"client_{client_id}_analysis.csv"
-#     result_data.to_csv(filename, index=False)
-#     print(f"Results saved to {filename}")
-    
-
 
 
 def save_results_to_csv(client_id, analysis_result):
     """Save the analysis results into a CSV file for each client, cleaning non-JSON output."""
     import json
     import re
-
     if isinstance(analysis_result, str):
         cleaned = analysis_result.strip()
-
-        # Remove triple backticks and ```json from beginning/end
         if cleaned.startswith("```json"):
             cleaned = cleaned[len("```json"):].strip()
         if cleaned.startswith("```"):
             cleaned = cleaned[len("```"):].strip()
         if cleaned.endswith("```"):
             cleaned = cleaned[:-3].strip()
-
-        # Try to find the first [ or { and cut out anything before it (for robustness)
         match = re.search(r"(\[.*\]|\{.*\})", cleaned, re.DOTALL)
         if match:
             cleaned = match.group(0)
-        # If it's empty or an error, skip
         if not cleaned or cleaned.lower().startswith("error"):
             print(f"Skipping client {client_id}: No valid analysis result. Message: {analysis_result}")
             return
         try:
             analysis_result = json.loads(cleaned)
+            for rec in analysis_result:
+                # Ensure all keys exist
+                rec.setdefault("building_name", "none")
+                rec.setdefault("sent_date", "none")
+                rec.setdefault("sent_method", "Not mentioned")
+                rec.setdefault("tour_status", "not toured")
+                rec.setdefault("tour_date", "none")
+                rec.setdefault("tour_time", "none")
+                rec.setdefault("tour_type", "none")
+                rec.setdefault("rejection_reason", "none")
+                rec.setdefault("replacement_requested", False)
+                rec.setdefault("notes", "none")
+                # Normalize timestamps
+                rec["sent_date"] = normalize_timestamp(rec["sent_date"])
+                rec["tour_date"] = normalize_timestamp(rec["tour_date"])
+                rec["timestamp"] = normalize_timestamp(rec.get("timestamp"))
+                # tour_time and others remain as-is (string/"none")
         except Exception as e:
             print(f"Skipping client {client_id}: Failed to parse analysis result as JSON. Error: {e}\nRaw result: {analysis_result}")
             return
-
-    # Convert the analysis result to a DataFrame
     result_data = pd.DataFrame(analysis_result)
     filename = f"client_{client_id}_analysis.csv"
     result_data.to_csv(filename, index=False)
     print(f"Results saved to {filename}")
 
 
-
-
-
-
-# # === USAGE EXAMPLE ===
-# if __name__ == "__main__":
-#     sample_messages = """
-#     === Complete Chat History ===
-#     # Paste the chat history here
-    
-#     # Paste your chat here
-#     """
-
-#     sample_requirements = "Extract only structured building interaction data. Ignore property searches, apartment types, or summaries."
-
-#     result = analyze_client_messages(sample_messages, sample_requirements)
-
-#     print("\nANALYSIS RESULTS:")
-#     print(result)
-
-
-# === MAIN PROCESS ===
 def process_clients():
-    # Step 1: Connect to the database
+    """Main process to fetch, analyze, and save client message data."""
     conn = connect_to_db()
+    try:
+        clients = fetch_qualified_clients(conn)
+        for client in clients[:5]:  # Only process the first client for now
+            client_id = client[0]
+            print(f"Processing client {client_id}...")
+            client_messages = fetch_client_messages(conn, client_id)
+            all_messages = "\n".join(client_messages)
+            # print(f"\n\n=== CLIENT {client_id} MESSAGES ===\n{all_messages}\n")
+            # requirements = dedent("""
+            #     Extract ONLY building-level interactions, one JSON object per building per action.
+            #     – Each object must have:
+            #         • building_name (exact text from the chat)
+            #         • action (tour_scheduled | tour_cancelled | replaced | etc.)
+            #         • timestamp (ISO or “none” if not mentioned)
+            #         • notes (if any free-text reason)
+            #     Example output for these sample messages:
 
-    # Step 2: Fetch clients whose current_stage is 4 or greater
-    clients = fetch_qualified_clients(conn)
+            #         “Client: Let’s schedule a tour of The Parker at 10AM tomorrow.”
+            #         “Agent: Confirmed. See you at The Parker.”
 
-    # Step 3: Process only the first 10 clients
-    for client in clients[:1]:
-        client_id = client[0]  # Extracting client_id from the tuple
-        print(f"Processing client {client_id}...")
+            #     should return:
 
-        # Fetch the client's chat messages
-        client_messages = fetch_client_messages(conn, client_id)
+            #     [
+            #       {
+            #         "building_name": "The Parker",
+            #         "action": "tour_scheduled",
+            #         "timestamp": "2025-06-05T10:00:00-05:00",
+            #         "notes": null
+            #       }
+            #     ]
 
-        # Combine messages into a single string (you can adjust this as needed)
-        all_messages = "\n".join(client_messages)
+            #     Now, ANALYZE the following CHAT MESSAGES and return exactly a JSON array matching that schema—nothing else.
+            # """)
+            
+            
+            requirements = dedent("""
+                Extract detailed building interactions from these CLIENT MESSAGES.
+                Output a JSON array where each element is a building object with exactly these keys:
 
-            # *** LOG THE INPUT YOU'RE SENDING TO GEMINI ***
-        print(f"\n\n=== CLIENT {client_id} MESSAGES ===\n{all_messages}\n")
-        # Define requirements for analysis
-        # requirements = "Extract structured building interaction data only. Ignore property searches, apartment types, or summaries."
+                - building_name
+                - sent_date
+                - sent_method
+                - tour_status
+                - tour_date
+                - tour_time
+                - tour_type
+                - rejection_reason
+                - replacement_requested
+                - notes
+                - timestamp
 
-        requirements = """
-Extract ONLY building-level interactions, one JSON object per building per action.
-– Each object must have:
-    • building_name (exact text from the chat)
-    • action (tour_scheduled | tour_cancelled | replaced | etc.)
-    • timestamp (ISO or “none” if not mentioned)
-    • notes (if any free-text reason)
-Example output for these sample messages:
+                Rules:
+                • If the agent “sent” a building (gave its name/details), set sent_date to the chat timestamp and infer sent_method.
+                • If there’s no explicit date, default sent_date▶︎“none”.
+                • Fill tour_status based on whether the building was toured, canceled, rejected, or replaced.
+                • For any missing info, use “none” (for strings) or false (for replacement_requested).
+                • Only output this JSON array–no extra text.
 
-    “Client: Let’s schedule a tour of The Parker at 10AM tomorrow.”
-    “Agent: Confirmed. See you at The Parker.”
+                Example:
+                Chat:
+                  “Agent: Here’s The Parker, 123 Main St.”
+                  “Agent: Let’s tour The Parker at 10AM tomorrow.”
+                  “Client: I didn’t like the area, let’s skip it.”
 
-should return:
+                Output:
+                [
+                  {
+                    "building_name": "The Parker",
+                    "sent_date": "2025-05-01T14:30:00-05:00",
+                    "sent_method": "Call",
+                    "tour_status": "rejected",
+                    "tour_date": "2025-05-02",
+                    "tour_time": "10:00 AM",
+                    "tour_type": "In-Person Tour",
+                    "rejection_reason": "didn’t like the area",
+                    "replacement_requested": false,
+                    "notes": "Client skipped after tour",
+                    "timestamp": "2025-05-01T14:30:00-05:00"
+                  }
+                ]
 
-[
-  {
-    "building_name": "The Parker",
-    "action": "tour_scheduled",
-    "timestamp": "2025-06-05T10:00:00-05:00",
-    "notes": null
-  }
-]
+                Now ANALYZE the following messages and return exactly that schema:
+            """)
 
-Now, ANALYZE the following CHAT MESSAGES and return exactly a JSON array matching that schema—nothing else.
-"""
-
+            analysis_result = analyze_client_messages(all_messages, requirements)
+            print(f"\nRAW GEMINI RESPONSE for client {client_id}:\n{analysis_result}\n")
+            save_results_to_csv(client_id, analysis_result)
+    finally:
+        conn.close()
         
 
-        
-        # Step 4: Analyze client messages using AI agent
-        analysis_result = analyze_client_messages(all_messages, requirements)
-        
-        # in process_clients(), right after analysis_result = ...
-        print(f"\nRAW GEMINI RESPONSE for client {client_id}:\n{analysis_result}\n")
-
-
-        # Step 5: Save the analysis result in a CSV file
-        save_results_to_csv(client_id, analysis_result)
-
-    # Close the database connection
-    conn.close()
-
-
-# === RUN THE PROCESS ===
 if __name__ == "__main__":
     process_clients()
 

@@ -1,7 +1,6 @@
-building_name,action,timestamp,notes
-Prose on the Pines,tour_scheduled,2025-06-05T12:00:00-05:00,
-Encore Rise,tour_scheduled,none,
-Woodridge at Grand Central Park,tour_scheduled,none,
-Skytop Apartments,tour_scheduled,none,
-Sanctuary at Jacob's Reserve,tour_scheduled,none,
-Encore Rise,lease_signed,none,
+building_name,sent_date,sent_method,tour_status,tour_date,tour_time,tour_type,rejection_reason,replacement_requested,notes,timestamp
+Prose on the Pines,none,none,toured,none,12:00 PM,In-Person Tour,none,False,First location of the tour,none
+Encore Rise,none,none,signed lease,none,none,In-Person Tour,none,False,Client signed lease,none
+Woodridge at Grand Central Park,none,none,not toured,none,none,none,none,False,Tyler signed at Encore Rise,none
+Skytop Apartments,none,none,not toured,none,none,none,none,False,Tyler signed at Encore Rise,none
+Sanctuary at Jacob's Reserve,none,none,not toured,none,none,none,none,False,Another availability just came across my desk,none

@@ -1,0 +1,9 @@
+building_name,sent_date,sent_method,tour_status,tour_date,tour_time,tour_type,rejection_reason,replacement_requested,notes,timestamp
+Cutters Point Apartments,none,Text,none,none,none,none,none,False,Client inquired about touring,none
+Atera Apartments,none,Text,canceled,none,3:00 PM,In-Person Tour,Agent cancelled due to no commission,False,"Client wanted to tour, agent canceled",none
+Ivy Urban Living,none,Text,rejected,none,3:00 PM,In-Person Tour,Client preferred Atera,True,Client rejected to see Atera,none
+Atera Apartments,none,Text,canceled,none,3:00 PM,In-Person Tour,none,False,Scheduled for tour,none
+Alexan,none,Text,toured,none,4:00 PM,In-Person Tour,Unit was a little too small,True,Client toured and received application,none
+South Side Flats,none,Text,toured,none,none,In-Person Tour,South side was a dump,False,Client toured; called it a dump,none
+ICON at Ross,none,Text,toured,none,11:00 AM,In-Person Tour,All the floor plans at Icon are over $1200,False,Client toured; all floor plans out of budget,none
+Atera Apartments,none,Text,canceled,none,3:00 PM,In-Person Tour,Agent cancelled tour,False,Agent cancelled tour,none

@@ -1,6 +1,4 @@
-turn,intent,details
-6,PRESENT_APARTMENT,"{'price': 2887, 'bedrooms': 2, 'bathrooms': 2, 'square_feet': 940, 'availability': 'Sep 9'}"
-8,PRESENT_APARTMENT,"{'price': 2033, 'bedrooms': 2, 'bathrooms': 1, 'square_feet': 744, 'availability': 'Sep 5'}"
-10,INFORM,"{'square_feet': 842, 'price': 3470}"
-15,PRESENT_APARTMENT,"{'price': 2095, 'square_feet': 1132, 'availability': 'Now', 'bedrooms': 2, 'bathrooms': 2, 'location': 'Lincoln park'}"
-18,OFFER_TOUR,
+building_name,sent_date,sent_method,tour_status,tour_date,tour_time,tour_type,rejection_reason,replacement_requested,notes,timestamp
+none,none,none,none,none,none,none,none,False,Property mentioned initially from partner apartment websites.,none
+none,none,none,rejected,none,none,none,Too small,True,Rejected due to size.,none
+Lincoln park,none,none,rejected,none,none,none,doesn't interest us,False,Apartment rejected despite meeting stated requirements.,none
