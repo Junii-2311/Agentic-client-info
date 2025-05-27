@@ -19,11 +19,9 @@ import dateutil.parser as dp
 genai.configure(api_key=GENAI_API_KEY)
 
 
-
-
 def normalize_timestamp(ts_str):
     """Normalize timestamp string to ISO format or 'none'."""
-    if not ts_str or ts_str.lower() == "none":
+    if not ts_str or str(ts_str).lower() == "none":
         return "none"
     dt = dp.parse(ts_str)
     if dt.time() == datetime.min.time():
@@ -40,14 +38,18 @@ def connect_to_db():
         "postgres://readonly:p2e0dfd8702aac2f2b98b80f2e14430fb7d3cec6f8aec1770701283042b112712@ec2-23-20-93-193.compute-1.amazonaws.com:5432/d5pt3225ki095v"
     )
     result = urlparse(db_url)
-    conn = psycopg2.connect(
-        dbname=result.path[1:],
-        user=result.username,
-        password=result.password,
-        host=result.hostname,
-        port=result.port,
-    )
-    return conn
+    try:
+        conn = psycopg2.connect(
+            dbname=result.path[1:],
+            user=result.username,
+            password=result.password,
+            host=result.hostname,
+            port=result.port,
+        )
+        return conn
+    except Exception as e:
+        print(f"Error connecting to the database: {e}")
+        return None
 
 
 def fetch_qualified_clients(conn):
@@ -240,6 +242,8 @@ def save_results_to_csv(client_id, analysis_result):
                 rec.setdefault("sent_date", "none")
                 rec.setdefault("sent_method", "Not mentioned")
                 rec.setdefault("tour_status", "not toured")
+                rec.setdefault("tour_completed", False)
+                rec.setdefault("tour_format", "none")
                 rec.setdefault("tour_date", "none")
                 rec.setdefault("tour_time", "none")
                 rec.setdefault("tour_type", "none")
@@ -263,6 +267,9 @@ def save_results_to_csv(client_id, analysis_result):
 def process_clients():
     """Main process to fetch, analyze, and save client message data."""
     conn = connect_to_db()
+    if conn is None:
+        print("Database connection failed. Exiting.")
+        return
     try:
         clients = fetch_qualified_clients(conn)
         for client in clients[:5]:  # Only process the first client for now
@@ -270,34 +277,6 @@ def process_clients():
             print(f"Processing client {client_id}...")
             client_messages = fetch_client_messages(conn, client_id)
             all_messages = "\n".join(client_messages)
-            # print(f"\n\n=== CLIENT {client_id} MESSAGES ===\n{all_messages}\n")
-            # requirements = dedent("""
-            #     Extract ONLY building-level interactions, one JSON object per building per action.
-            #     – Each object must have:
-            #         • building_name (exact text from the chat)
-            #         • action (tour_scheduled | tour_cancelled | replaced | etc.)
-            #         • timestamp (ISO or “none” if not mentioned)
-            #         • notes (if any free-text reason)
-            #     Example output for these sample messages:
-
-            #         “Client: Let’s schedule a tour of The Parker at 10AM tomorrow.”
-            #         “Agent: Confirmed. See you at The Parker.”
-
-            #     should return:
-
-            #     [
-            #       {
-            #         "building_name": "The Parker",
-            #         "action": "tour_scheduled",
-            #         "timestamp": "2025-06-05T10:00:00-05:00",
-            #         "notes": null
-            #       }
-            #     ]
-
-            #     Now, ANALYZE the following CHAT MESSAGES and return exactly a JSON array matching that schema—nothing else.
-            # """)
-            
-            
             requirements = dedent("""
                 Extract detailed building interactions from these CLIENT MESSAGES.
                 Output a JSON array where each element is a building object with exactly these keys:
@@ -306,6 +285,8 @@ def process_clients():
                 - sent_date
                 - sent_method
                 - tour_status
+                - tour_completed
+                - tour_format
                 - tour_date
                 - tour_time
                 - tour_type
@@ -320,6 +301,9 @@ def process_clients():
                 • Fill tour_status based on whether the building was toured, canceled, rejected, or replaced.
                 • For any missing info, use “none” (for strings) or false (for replacement_requested).
                 • Only output this JSON array–no extra text.
+                • Set `tour_completed` to true if the chat confirms the tour occurred, false otherwise.  
+                • If it did occur, set `tour_format` to one of "In-Person", "Virtual (Google Meet)", or "Drive-By".  
+                • If format isn’t mentioned, default to "none". 
 
                 Example:
                 Chat:
@@ -346,12 +330,12 @@ def process_clients():
 
                 Now ANALYZE the following messages and return exactly that schema:
             """)
-
             analysis_result = analyze_client_messages(all_messages, requirements)
             print(f"\nRAW GEMINI RESPONSE for client {client_id}:\n{analysis_result}\n")
             save_results_to_csv(client_id, analysis_result)
     finally:
-        conn.close()
+        if conn is not None:
+            conn.close()
         
 
 if __name__ == "__main__":
