@@ -14,3 +14,7 @@ __pycache__/
 
 # Data and CSV outputs
 *.csv
+
+sample.json
+sample2.json
+sample3.json
