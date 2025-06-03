@@ -1,4 +1,0 @@
-building_name,sent_date,sent_method,tour_status,tour_date,tour_time,tour_type,rejection_reason,replacement_requested,notes,timestamp,tour_completed,tour_format
-none,none,none,rejected,none,none,none,it doesn't interest us,False,Client uninterested despite meeting requirements,none,False,none
-none,none,none,rejected,none,none,none,Too small,False,Apartment too small,none,False,none
-none,none,none,rejected,none,none,none,Not interested in that unit,False,Not interested in the unit,none,False,none

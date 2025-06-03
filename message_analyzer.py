@@ -1,29 +1,51 @@
 import os
+import json
+from datetime import datetime, timezone
 from dotenv import load_dotenv
-
-load_dotenv()
-
-GENAI_API_KEY = os.getenv("GENAI_API_KEY")
-EXA_API_KEY = os.getenv("EXA_API_KEY")
-
 import psycopg2
 from urllib.parse import urlparse
 import pandas as pd
-from datetime import datetime
 from textwrap import dedent
 import google.generativeai as genai
 from agno.agent import Agent
 from agno.tools.exa import ExaTools
 import dateutil.parser as dp
 
+load_dotenv()
+
+GENAI_API_KEY = os.getenv("GENAI_API_KEY")
+EXA_API_KEY = os.getenv("EXA_API_KEY")
+
 genai.configure(api_key=GENAI_API_KEY)
+
+STATE_FILE = "last_run.json"
+
+
+def load_last_run():
+    try:
+        with open(STATE_FILE, "r") as f:
+            ts = json.load(f)["last_run"]
+            return datetime.fromisoformat(ts)
+    except Exception:
+        # If missing or malformed, default far in the past
+        return datetime(2000, 1, 1, tzinfo=timezone.utc)
+
+
+def save_last_run(ts: datetime):
+    with open(STATE_FILE, "w") as f:
+        json.dump({"last_run": ts.astimezone(timezone.utc).isoformat()}, f)
 
 
 def normalize_timestamp(ts_str):
     """Normalize timestamp string to ISO format or 'none'."""
     if not ts_str or str(ts_str).lower() == "none":
         return "none"
-    dt = dp.parse(ts_str)
+    try:
+        dt = dp.parse(ts_str)
+    
+    except Exception:
+        return "none"
+    
     if dt.time() == datetime.min.time():
         return "none"
     return dt.isoformat()
@@ -52,16 +74,153 @@ def connect_to_db():
         return None
 
 
-def fetch_qualified_clients(conn):
-    """Fetch clients whose current_stage is 4 or greater."""
+def fetch_qualified_clients(conn, since=None):
+    """Fetch clients whose current_stage is ≥4 and created_on ≥ Jan 1, 2025, sorted oldest first."""
     query = """
-        SELECT client_id 
-        FROM client_stage_progression 
-        WHERE current_stage >= 4
+      SELECT client_id, created_on
+      FROM client_stage_progression
+      WHERE current_stage >= 4
     """
+    params = []
+    if since is not None:
+        query += " AND created_on > %s"
+        params.append(since)
+    else:
+        query += " AND created_on >= '2025-01-01'"
+    query += " ORDER BY created_on ASC"
     with conn.cursor() as cur:
-        cur.execute(query)
-        return cur.fetchall()
+        if params:
+            cur.execute(query, params)
+        else:
+            cur.execute(query)
+        # Remove duplicates while preserving order
+        seen = set()
+        client_ids = []
+        for row in cur.fetchall():
+            client_id = row[0]
+            if client_id not in seen:
+                seen.add(client_id)
+                client_ids.append(client_id)
+        return client_ids
+
+
+def process_incremental():
+    # 1) connect
+    conn = connect_to_db()
+    if not conn:
+        print("DB connection failed")
+        return
+
+    try:
+        # 2) load watermark
+        last_run = load_last_run()
+        print(f"▶️  Last run: {last_run.isoformat()}")
+
+        # 3) fetch only new clients
+        new_clients = fetch_qualified_clients(conn, last_run)
+        print(f"🔍  Found {len(new_clients)} new clients since last run")
+        print(f"[BATCH DEBUG] Total clients to process: {len(new_clients)}")
+
+        processed_count = 0
+        # 4) process each
+        for idx, client_id in enumerate(new_clients, 1):
+            # Check if connection is closed, and reconnect if needed
+            if conn.closed:
+                print("[INFO] Database connection lost. Reconnecting...")
+                conn = connect_to_db()
+                if not conn:
+                    print("[ERROR] Could not reconnect to the database. Exiting batch.")
+                    break
+            if os.path.exists("all_building_interactions.csv"):
+                try:
+                    df_existing = pd.read_csv("all_building_interactions.csv", usecols=["client_id"])
+                    if str(client_id) in set(df_existing["client_id"].astype(str)):
+                        print(f"[SKIP] Client {client_id} already processed. Skipping.")
+                        continue
+                    
+                except Exception as e:
+                    print(f"Warning: Could not check processed client IDs: {e}")
+            print(f"— Processing client {client_id}")
+            messages = fetch_client_messages(conn, client_id)
+            all_msgs = "\n".join(messages)
+            requirements = dedent(
+                """
+                Extract detailed building interactions from these CLIENT MESSAGES.
+                Output a JSON array where each element is a building object with exactly these keys:
+                - building_name
+                - sent_date
+                - sent_method
+                - tour_status
+                - tour_completed
+                - tour_format
+                - tour_date
+                - tour_time
+                - tour_type
+                - rejection_reason
+                - replacement_requested
+                - notes
+                - timestamp
+                Rules:
+                • If the agent “sent” a building (gave its name/details), set sent_date to the chat timestamp and infer sent_method.
+                • If there’s no explicit date, default sent_date▶︎“none”.
+                • Fill tour_status based on whether the building was toured, canceled, rejected, or replaced.
+                • For any missing info, use “none” (for strings) or false (for replacement_requested).
+                • Only output this JSON array–no extra text.
+                • Set `tour_completed` to true if the chat confirms the tour occurred, false otherwise.  
+                • If it did occur, set `tour_format` to one of "In-Person", "Virtual (Google Meet)", or "Drive-By".  
+                • If format isn’t mentioned, default to "none". 
+                Example:
+                Chat:
+                  “Agent: Here’s The Parker, 123 Main St.”
+                  “Agent: Let’s tour The Parker at 10AM tomorrow.”
+                  “Client: I didn’t like the area, let’s skip it.”
+                Output:
+                [
+                  {
+                    "building_name": "The Parker",
+                    "sent_date": "2025-05-01T14:30:00-05:00",
+                    "sent_method": "Call",
+                    "tour_status": "rejected",
+                    "tour_date": "2025-05-02",
+                    "tour_time": "10:00 AM",
+                    "tour_type": "In-Person Tour",
+                    "rejection_reason": "didn’t like the area",
+                    "replacement_requested": false,
+                    "notes": "Client skipped after tour",
+                    "timestamp": "2025-05-01T14:30:00-05:00"
+                  }
+                ]
+                Now ANALYZE the following messages and return exactly that schema:
+            """
+            )
+            raw = analyze_client_messages(all_msgs, requirements)
+            save_results_to_csv(client_id, raw)
+            processed_count += 1
+            print(f"[BATCH DEBUG] Finished processing client {client_id} ({processed_count}/{len(new_clients)})")
+
+        # ── Insert KPI summary here ──
+        try:
+            master_df = pd.read_csv("all_building_interactions.csv")
+            total_clients     = master_df["client_id"].nunique()
+            total_rows        = len(master_df)
+            tours_scheduled   = (master_df["tour_status"] == "toured").sum()
+            tours_completed   = (master_df["tour_completed"] == True).sum()
+            unique_buildings  = master_df["building_name"].nunique()
+            print(
+                f"👉 Overall: {total_clients} clients, {total_rows} rows; "
+                f"{tours_scheduled} scheduled, {tours_completed} completed, "
+                f"{unique_buildings} unique buildings."
+            )
+        except FileNotFoundError:
+            print("👉 No master CSV found yet—skipping KPI summary.")
+
+        # 5) bump watermark
+        now = datetime.now(timezone.utc)
+        save_last_run(now)
+        print(f"✅  Updated last_run to {now.isoformat()}")
+
+    finally:
+        conn.close()
 
 
 def fetch_client_messages(conn, client_id):
@@ -84,9 +243,13 @@ def fetch_client_messages(conn, client_id):
             rows = cur.fetchall()
             messages = [row[0] for row in rows if row[0] is not None]
             if messages:
-                print(f"Fetched {len(messages)} messages from 'public.textmessage' for client {client_id}.")
+                print(
+                    f"Fetched {len(messages)} messages from 'public.textmessage' for client {client_id}."
+                )
                 return messages
-            print(f"No messages found in 'public.textmessage' for client {client_id}, checking 'client_fub_messages'...")
+            print(
+                f"No messages found in 'public.textmessage' for client {client_id}, checking 'client_fub_messages'..."
+            )
             query2 = """
                 SELECT message
                 FROM client_fub_messages
@@ -95,7 +258,9 @@ def fetch_client_messages(conn, client_id):
             cur.execute(query2, (client_id,))
             messages2 = [row[0] for row in cur.fetchall() if row[0] is not None]
             if messages2:
-                print(f"Fetched {len(messages2)} messages from 'client_fub_messages' for client {client_id}.")
+                print(
+                    f"Fetched {len(messages2)} messages from 'client_fub_messages' for client {client_id}."
+                )
             else:
                 print(f"No messages found for client {client_id} in either table.")
             return messages2
@@ -113,15 +278,17 @@ class GeminiChat:
     def response_stream(self, messages, **kwargs):
         if isinstance(messages, list):
             last = messages[-1]
-            prompt = last.content if hasattr(last, 'content') else last.get('content', str(last))
+            prompt = last.content if hasattr(last, "content") else last.get("content", str(last))
         else:
             prompt = messages
-        model = genai.GenerativeModel('gemini-2.0-flash')
+        model = genai.GenerativeModel("gemini-2.0-flash")
         response = model.generate_content(prompt)
+
         class GeminiResponse:
             def __init__(self, content):
                 self.event = "assistant_response"
                 self.content = content
+
         yield GeminiResponse(response.text)
 
     def get_instructions_for_model(self, tools=None):
@@ -134,14 +301,17 @@ class GeminiChat:
 message_analyzer = Agent(
     model=GeminiChat(),
     tools=[ExaTools(api_key=EXA_API_KEY, start_published_date=today, type="keyword")],
-    description=dedent("""
+    description=dedent(
+        """
         You manage a team of agents who collect client requirements.
         Your primary goal is to track all building-related interactions:
         - Buildings sent to clients
         - Client responses: acceptance, rejection (with reason), or replacement requests
         - Full history of interaction with timestamps and actions (tour scheduled, canceled, etc.)
-    """),
-    instructions=dedent("""
+    """
+    ),
+    instructions=dedent(
+        """
         From the provided chat messages, extract structured building-level data only.
 
         For each building mentioned, return an object with:
@@ -177,8 +347,10 @@ message_analyzer = Agent(
             "timestamp": "2025-04-23T21:28:22.000+00:00"
           }
         ]
-    """),
-    expected_output=dedent("""
+    """
+    ),
+    expected_output=dedent(
+        """
 [
   {
     "building_name": "Example Tower",
@@ -191,7 +363,8 @@ message_analyzer = Agent(
     "timestamp": "2025-04-22T18:48:15.000+00:00"
   }
 ]
-    """),
+    """
+    ),
     markdown=True,
 )
 
@@ -209,17 +382,27 @@ Please analyze the messages and return structured JSON only.
 """
     try:
         print("Analyzing messages...")
-        model = genai.GenerativeModel('gemini-2.0-flash')
+        model = genai.GenerativeModel("gemini-2.0-flash")
         response = model.generate_content(prompt)
         return response.text
     except Exception as e:
         return f"Error: {str(e)}"
 
 
-def save_results_to_csv(client_id, analysis_result):
-    """Save the analysis results into a CSV file for each client, cleaning non-JSON output."""
-    import json
-    import re
+def save_results_to_csv(client_id, analysis_result, master_csv="all_building_interactions.csv"):
+    """Save the analysis results into a per-client CSV and append to a master CSV, cleaning non-JSON output."""
+    import json, re
+
+    # Step 0: Load processed client IDs if master CSV exists
+    processed_clients = set()
+    if os.path.exists(master_csv):
+        try:
+            df_existing = pd.read_csv(master_csv, usecols=["client_id"])
+            processed_clients = set(df_existing["client_id"].astype(str))
+        except Exception as e:
+            print(f"Warning: Could not load processed client IDs from master CSV: {e}")
+
+    # Step 1: clean up any ```json wrappers, extract valid JSON
     if isinstance(analysis_result, str):
         cleaned = analysis_result.strip()
         if cleaned.startswith("```json"):
@@ -228,116 +411,72 @@ def save_results_to_csv(client_id, analysis_result):
             cleaned = cleaned[len("```"):].strip()
         if cleaned.endswith("```"):
             cleaned = cleaned[:-3].strip()
-        match = re.search(r"(\[.*\]|\{.*\})", cleaned, re.DOTALL)
-        if match:
-            cleaned = match.group(0)
+        # Try to extract the first JSON array/object (robust, even with extra text)
+        m = re.search(r"(\[.*?\]|\{.*?\})", cleaned, re.DOTALL)
+        if m:
+            cleaned = m.group(0)
         if not cleaned or cleaned.lower().startswith("error"):
-            print(f"Skipping client {client_id}: No valid analysis result. Message: {analysis_result}")
-            return
+            print(f"No valid analysis result for client {client_id}. Writing error message to CSV.")
+            os.makedirs("csv", exist_ok=True)
+            client_filename = os.path.join("csv", f"{client_id}_analysis.csv")
+            with open(client_filename, "w", encoding="utf-8") as f:
+                f.write("error: No valid analysis result from Gemini. Raw output: " + repr(analysis_result))
+            return None
         try:
-            analysis_result = json.loads(cleaned)
-            for rec in analysis_result:
-                # Ensure all keys exist
-                rec.setdefault("building_name", "none")
-                rec.setdefault("sent_date", "none")
-                rec.setdefault("sent_method", "Not mentioned")
-                rec.setdefault("tour_status", "not toured")
-                rec.setdefault("tour_completed", False)
-                rec.setdefault("tour_format", "none")
-                rec.setdefault("tour_date", "none")
-                rec.setdefault("tour_time", "none")
-                rec.setdefault("tour_type", "none")
-                rec.setdefault("rejection_reason", "none")
-                rec.setdefault("replacement_requested", False)
-                rec.setdefault("notes", "none")
-                # Normalize timestamps
-                rec["sent_date"] = normalize_timestamp(rec["sent_date"])
-                rec["tour_date"] = normalize_timestamp(rec["tour_date"])
-                rec["timestamp"] = normalize_timestamp(rec.get("timestamp"))
-                # tour_time and others remain as-is (string/"none")
+            records = json.loads(cleaned)
         except Exception as e:
-            print(f"Skipping client {client_id}: Failed to parse analysis result as JSON. Error: {e}\nRaw result: {analysis_result}")
-            return
-    result_data = pd.DataFrame(analysis_result)
-    filename = f"client_{client_id}_analysis.csv"
-    result_data.to_csv(filename, index=False)
-    print(f"Results saved to {filename}")
+            print(f"JSON parse error for client {client_id}: {e}. Writing raw Gemini output to CSV.")
+            os.makedirs("csv", exist_ok=True)
+            client_filename = os.path.join("csv", f"{client_id}_analysis.csv")
+            with open(client_filename, "w", encoding="utf-8") as f:
+                f.write(f"error: JSON parse error: {e}\nRaw Gemini output: {repr(analysis_result)}")
+            return None
+    else:
+        records = analysis_result
 
+    # Step 2: ensure all keys & normalize
+    for rec in records:
+        rec.setdefault("building_name", "none")
+        rec.setdefault("sent_date", "none")
+        rec.setdefault("sent_method", "Not mentioned")
+        rec.setdefault("tour_status", "not toured")
+        rec.setdefault("tour_completed", False)
+        rec.setdefault("tour_format", "none")
+        rec.setdefault("tour_date", "none")
+        rec.setdefault("tour_time", "none")
+        rec.setdefault("tour_type", "none")
+        rec.setdefault("rejection_reason", "none")
+        rec.setdefault("replacement_requested", False)
+        rec.setdefault("notes", "none")
+        # normalize any timestamps
+        rec["sent_date"] = normalize_timestamp(rec["sent_date"])
+        rec["tour_date"] = normalize_timestamp(rec["tour_date"])
+        rec["timestamp"] = normalize_timestamp(rec.get("timestamp"))
 
-def process_clients():
-    """Main process to fetch, analyze, and save client message data."""
-    conn = connect_to_db()
-    if conn is None:
-        print("Database connection failed. Exiting.")
-        return
-    try:
-        clients = fetch_qualified_clients(conn)
-        for client in clients[:5]:  # Only process the first client for now
-            client_id = client[0]
-            print(f"Processing client {client_id}...")
-            client_messages = fetch_client_messages(conn, client_id)
-            all_messages = "\n".join(client_messages)
-            requirements = dedent("""
-                Extract detailed building interactions from these CLIENT MESSAGES.
-                Output a JSON array where each element is a building object with exactly these keys:
+    # Step 3: build DataFrame and tag client_id
+    df = pd.DataFrame(records)
+    df.insert(0, "client_id", client_id)
 
-                - building_name
-                - sent_date
-                - sent_method
-                - tour_status
-                - tour_completed
-                - tour_format
-                - tour_date
-                - tour_time
-                - tour_type
-                - rejection_reason
-                - replacement_requested
-                - notes
-                - timestamp
+    # Step 4: save per-client file
+    os.makedirs("csv", exist_ok=True)
+    client_filename = os.path.join("csv", f"{client_id}_analysis.csv")
+    df.to_csv(client_filename, index=False)
+    print(f"Results saved to {client_filename}")
 
-                Rules:
-                • If the agent “sent” a building (gave its name/details), set sent_date to the chat timestamp and infer sent_method.
-                • If there’s no explicit date, default sent_date▶︎“none”.
-                • Fill tour_status based on whether the building was toured, canceled, rejected, or replaced.
-                • For any missing info, use “none” (for strings) or false (for replacement_requested).
-                • Only output this JSON array–no extra text.
-                • Set `tour_completed` to true if the chat confirms the tour occurred, false otherwise.  
-                • If it did occur, set `tour_format` to one of "In-Person", "Virtual (Google Meet)", or "Drive-By".  
-                • If format isn’t mentioned, default to "none". 
-
-                Example:
-                Chat:
-                  “Agent: Here’s The Parker, 123 Main St.”
-                  “Agent: Let’s tour The Parker at 10AM tomorrow.”
-                  “Client: I didn’t like the area, let’s skip it.”
-
-                Output:
-                [
-                  {
-                    "building_name": "The Parker",
-                    "sent_date": "2025-05-01T14:30:00-05:00",
-                    "sent_method": "Call",
-                    "tour_status": "rejected",
-                    "tour_date": "2025-05-02",
-                    "tour_time": "10:00 AM",
-                    "tour_type": "In-Person Tour",
-                    "rejection_reason": "didn’t like the area",
-                    "replacement_requested": false,
-                    "notes": "Client skipped after tour",
-                    "timestamp": "2025-05-01T14:30:00-05:00"
-                  }
-                ]
-
-                Now ANALYZE the following messages and return exactly that schema:
-            """)
-            analysis_result = analyze_client_messages(all_messages, requirements)
-            print(f"\nRAW GEMINI RESPONSE for client {client_id}:\n{analysis_result}\n")
-            save_results_to_csv(client_id, analysis_result)
-    finally:
-        if conn is not None:
-            conn.close()
+    # Step 5: append to master only if not already processed
+    if str(client_id) in processed_clients:
+        print(f"[SKIP] Client {client_id} already processed in master CSV. Skipping append.")
+        return df
+    write_header = not os.path.exists(master_csv)
+    df.to_csv(master_csv, mode="a", header=write_header, index=False)
+    if write_header:
+        print(f"Created master file and appended data for client {client_id}.")
+    else:
+        print(f"Appended data for client {client_id} to master file.")
         
+    return df
+
 
 if __name__ == "__main__":
-    process_clients()
+    process_incremental()
 
