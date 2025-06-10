@@ -3,7 +3,7 @@ from google.oauth2 import service_account
 from googleapiclient.discovery import build
 import csv
 
-SERVICE_ACCOUNT_FILE = 'credentials.json'
+SERVICE_ACCOUNT_FILE = 'service_file/credentials.json'
 USER_EMAIL = 'ahmed.junaid@homeeasy.com'
 SCOPES = ['https://www.googleapis.com/auth/gmail.readonly']
 
