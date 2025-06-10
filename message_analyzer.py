@@ -79,7 +79,7 @@ def fetch_qualified_clients(conn, since=None):
     query = """
       SELECT client_id, created_on
       FROM client_stage_progression
-      WHERE current_stage >= 4
+      WHERE current_stage = 4
     """
     params = []
     if since is not None:
