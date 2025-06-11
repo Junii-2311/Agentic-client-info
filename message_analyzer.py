@@ -160,6 +160,20 @@ def process_incremental():
                 - replacement_requested
                 - notes
                 - timestamp
+                - sales_agent
+                - leasing_agent
+                - building_address
+                - unit_number
+                - price
+                - bed_bath
+                - client_feedback
+                - agent_notes
+                - appointment_status
+                - appointment_location
+                - parking_info
+                - pet_policy
+                - application_status
+                - follow_up_required
                 Rules:
                 • If the agent “sent” a building (gave its name/details), set sent_date to the chat timestamp and infer sent_method.
                 • If there’s no explicit date, default sent_date▶︎“none”.
@@ -434,7 +448,7 @@ def save_results_to_csv(client_id, analysis_result, master_csv="all_building_int
     else:
         records = analysis_result
 
-    # Step 2: ensure all keys & normalize
+    # Step 2: ensure all keys & normalize, add new columns
     for rec in records:
         rec.setdefault("building_name", "none")
         rec.setdefault("sent_date", "none")
@@ -448,6 +462,20 @@ def save_results_to_csv(client_id, analysis_result, master_csv="all_building_int
         rec.setdefault("rejection_reason", "none")
         rec.setdefault("replacement_requested", False)
         rec.setdefault("notes", "none")
+        rec.setdefault("sales_agent", "none")
+        rec.setdefault("leasing_agent", "none")
+        rec.setdefault("building_address", "none")
+        rec.setdefault("unit_number", "none")
+        rec.setdefault("price", "none")
+        rec.setdefault("bed_bath", "none")
+        rec.setdefault("client_feedback", "none")
+        rec.setdefault("agent_notes", "none")
+        rec.setdefault("appointment_status", "none")
+        rec.setdefault("appointment_location", "none")
+        rec.setdefault("parking_info", "none")
+        rec.setdefault("pet_policy", "none")
+        rec.setdefault("application_status", "none")
+        rec.setdefault("follow_up_required", False)
         # normalize any timestamps
         rec["sent_date"] = normalize_timestamp(rec["sent_date"])
         rec["tour_date"] = normalize_timestamp(rec["tour_date"])
@@ -477,6 +505,204 @@ def save_results_to_csv(client_id, analysis_result, master_csv="all_building_int
     return df
 
 
+def enhanced_requirements():
+    return dedent(
+        '''
+        Extract every building mentioned in the CLIENT MESSAGES, even if details are partial, ambiguous, or only referenced indirectly (e.g., by nickname, address, or context). For each building, output a JSON object with these keys:
+        - building_name
+        - sent_date
+        - sent_method
+        - tour_status
+        - tour_completed
+        - tour_format
+        - tour_date
+        - tour_time
+        - tour_type
+        - rejection_reason
+        - replacement_requested
+        - notes
+        - timestamp
+        - sales_agent
+        - leasing_agent
+        - building_address
+        - unit_number
+        - price
+        - bed_bath
+        - client_feedback
+        - agent_notes
+        - appointment_status
+        - appointment_location
+        - parking_info
+        - pet_policy
+        - application_status
+        - follow_up_required
+        Rules:
+        • Include a record for every building mentioned, even if some fields are "none".
+        • Look for building names and info in ALL messages (agent and client), not just agent messages.
+        • If a building is referenced by nickname, address, or partial name, include it and note ambiguity in notes.
+        • If a tour, rejection, or other info is mentioned later, link it back to the correct building if possible (use context and inference).
+        • For missing info, use "none" (for strings), false (for booleans), or 0 (for numbers).
+        • If multiple buildings are sent together, create a record for each.
+        • If a building is mentioned multiple times, merge info into a single record if possible (combine all clues).
+        • Only output the JSON array—no extra text.
+        • Set `tour_completed` to true if the chat confirms the tour occurred, false otherwise.
+        • If it did occur, set `tour_format` to one of "In-Person", "Virtual (Google Meet)", or "Drive-By". If format isn’t mentioned, default to "none".
+        • Add as much detail as possible to notes if info is ambiguous, inferred, or scattered.
+        • For new fields, extract if present or inferable, otherwise use "none" or false.
+        • If a field can be inferred from context (e.g., price, agent, feedback), fill it in.
+        • If a building is referenced indirectly (e.g., "the first one you sent"), try to resolve it and link info.
+        • If a message refers to multiple buildings, split and create a record for each.
+        • If a building is mentioned in a group or as part of a list, create a record for each.
+        Example:
+        Chat:
+          "Agent: Here’s The Parker, 123 Main St."
+          "Agent: Let’s tour The Parker at 10AM tomorrow."
+          "Client: I didn’t like the area, let’s skip it."
+          "Agent: Also, The Summit and The Grove are available."
+          "Client: Can we see The Grove on Friday?"
+          "Agent: The one with the pool is $2,000/mo."
+        Output:
+        [
+          {
+            "building_name": "The Parker",
+            "sent_date": "2025-05-01T14:30:00-05:00",
+            "sent_method": "Call",
+            "tour_status": "rejected",
+            "tour_date": "2025-05-02",
+            "tour_time": "10:00 AM",
+            "tour_type": "In-Person Tour",
+            "rejection_reason": "didn’t like the area",
+            "replacement_requested": false,
+            "notes": "Client skipped after tour",
+            "timestamp": "2025-05-01T14:30:00-05:00",
+            "sales_agent": "none",
+            "leasing_agent": "none",
+            "building_address": "123 Main St.",
+            "unit_number": "none",
+            "price": "none",
+            "bed_bath": "none",
+            "client_feedback": "didn’t like the area",
+            "agent_notes": "none",
+            "appointment_status": "none",
+            "appointment_location": "none",
+            "parking_info": "none",
+            "pet_policy": "none",
+            "application_status": "none",
+            "follow_up_required": false
+          },
+          {
+            "building_name": "The Summit",
+            "sent_date": "2025-05-01T14:31:00-05:00",
+            "sent_method": "Call",
+            "tour_status": "sent",
+            "tour_date": "none",
+            "tour_time": "none",
+            "tour_type": "none",
+            "rejection_reason": "none",
+            "replacement_requested": false,
+            "notes": "No further info",
+            "timestamp": "2025-05-01T14:31:00-05:00",
+            "sales_agent": "none",
+            "leasing_agent": "none",
+            "building_address": "none",
+            "unit_number": "none",
+            "price": "none",
+            "bed_bath": "none",
+            "client_feedback": "none",
+            "agent_notes": "none",
+            "appointment_status": "none",
+            "appointment_location": "none",
+            "parking_info": "none",
+            "pet_policy": "none",
+            "application_status": "none",
+            "follow_up_required": false
+          },
+          {
+            "building_name": "The Grove",
+            "sent_date": "2025-05-01T14:31:00-05:00",
+            "sent_method": "Call",
+            "tour_status": "toured",
+            "tour_date": "2025-05-02",
+            "tour_time": "none",
+            "tour_type": "none",
+            "rejection_reason": "none",
+            "replacement_requested": false,
+            "notes": "Tour requested by client for Friday",
+            "timestamp": "2025-05-01T14:31:00-05:00",
+            "sales_agent": "none",
+            "leasing_agent": "none",
+            "building_address": "none",
+            "unit_number": "none",
+            "price": "$2,000/mo",
+            "bed_bath": "none",
+            "client_feedback": "none",
+            "agent_notes": "none",
+            "appointment_status": "none",
+            "appointment_location": "none",
+            "parking_info": "none",
+            "pet_policy": "none",
+            "application_status": "none",
+            "follow_up_required": false
+          }
+        ]
+        Now ANALYZE the following messages and return exactly that schema:
+        '''
+    )
+
+def postprocess_building_records(records):
+    """
+    Post-process the extracted building records to merge duplicates, fill missing info, and improve coverage.
+    Also print debug info about what was found.
+    """
+    from collections import defaultdict
+    merged = defaultdict(dict)
+    for rec in records:
+        name = rec.get("building_name", "none").strip().lower()
+        if name in merged:
+            for k, v in rec.items():
+                if k not in merged[name] or merged[name][k] in (None, "none", False, "Not mentioned"):
+                    merged[name][k] = v
+                elif v not in (None, "none", False, "Not mentioned"):
+                    merged[name][k] = v
+        else:
+            merged[name] = rec.copy()
+    # Debug printout
+    print("[DEBUG] Buildings extracted:")
+    for bname, rec in merged.items():
+        print(f"  - {rec.get('building_name','none')}: {[k for k,v in rec.items() if v not in ('none', False, '', None, 'Not mentioned')]}")
+    return list(merged.values())
+
+
+def process_single_client(client_id):
+    """Process a single client by client_id: fetch messages, analyze, and save results."""
+    conn = connect_to_db()
+    if not conn:
+        print("DB connection failed")
+        return
+    try:
+        messages = fetch_client_messages(conn, client_id)
+        if not messages:
+            print(f"No messages found for client {client_id}.")
+            return
+        all_msgs = "\n".join(messages)
+        requirements = enhanced_requirements()
+        raw = analyze_client_messages(all_msgs, requirements)
+        # Try to parse and postprocess
+        import json
+        try:
+            records = json.loads(raw)
+            records = postprocess_building_records(records)
+        except Exception:
+            records = raw
+        save_results_to_csv(client_id, records)
+    finally:
+        conn.close()
+
+
 if __name__ == "__main__":
-    process_incremental()
+    import sys
+    if len(sys.argv) == 3 and sys.argv[1] == "single":
+        process_single_client(sys.argv[2])
+    else:
+        process_incremental()
 

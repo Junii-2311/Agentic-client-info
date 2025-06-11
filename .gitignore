@@ -22,3 +22,4 @@ sample3.json
 
 credentials.json
 service_file/credentials.json
+.env
